@@ -1,0 +1,8 @@
+# Copy this file to terraform.tfvars and add your actual values
+# terraform.tfvars is already in .gitignore for security
+
+aws_region = "ap-southeast-1"
+
+# Generate SSH key pair with: ssh-keygen -t rsa -b 4096 -f ~/.ssh/terraform-key
+# Then paste the contents of ~/.ssh/terraform-key.pub below
+ssh_public_key = "ssh-rsa AAAAB3NzaC1yc2EAAA... your-public-key-here"
