@@ -55,7 +55,7 @@ systemctl enable mysql
 systemctl start mysql
 
 # Create DB and user only if they don't exist (safe to re-run across up/down cycles)
-mysql -u root <<SQL
+mysql -u root --force <<SQL 2>> /var/log/restaurant-setup.log
 CREATE DATABASE IF NOT EXISTS ${db_name}
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
