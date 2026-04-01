@@ -91,8 +91,8 @@ DB_DATABASE=$DB_NAME
 DB_USERNAME=$DB_USER
 DB_PASSWORD=$DB_PASS
 REVERB_APP_ID=restaurant-pos
-REVERB_APP_KEY=restaurant-key
-REVERB_APP_SECRET=restaurant-secret
+REVERB_APP_KEY=restaurant-pos-key
+REVERB_APP_SECRET=restaurant-pos-secret
 ENV
 
 # ── Copy docker-compose.prod.yml ──────────────────────────────────────────────
@@ -102,8 +102,10 @@ if [ ! -f "$COMPOSE_FILE" ]; then
   exit 1
 fi
 
-echo "📋 Copying docker-compose.prod.yml..."
+echo "📋 Copying docker-compose.prod.yml and nginx config..."
 $SCP "$COMPOSE_FILE" ubuntu@"$APP_IP":/opt/restaurant/docker-compose.prod.yml
+$SSH ubuntu@"$APP_IP" "mkdir -p /opt/restaurant/docker/nginx"
+$SCP "$REPO_DIR/docker/nginx/default.conf" ubuntu@"$APP_IP":/opt/restaurant/docker/nginx/default.conf
 
 # ── ECR login + pull + up ─────────────────────────────────────────────────────
 echo "🚢 Pulling images from ECR and starting containers..."
@@ -120,8 +122,24 @@ sudo docker compose -f /opt/restaurant/docker-compose.prod.yml --env-file /opt/r
 
 echo "⏳ Waiting for backend to be ready..."
 sleep 10
-sudo docker exec restaurant-pos-backend-prod php artisan migrate --force
-sudo docker exec restaurant-pos-backend-prod php artisan db:seed --force
+
+# Re-cache config with the current APP_URL (IP changes on every redeploy)
+sudo docker exec -u www-data restaurant-pos-backend-prod php artisan config:clear
+sudo docker exec -u www-data restaurant-pos-backend-prod php artisan config:cache
+
+sudo docker exec -u www-data restaurant-pos-backend-prod php artisan migrate --force
+
+# Publish Filament CSS/JS to public/ so nginx can serve them as static files
+sudo docker exec -u www-data restaurant-pos-backend-prod php artisan filament:assets
+
+# Only seed on a fresh database (no users yet)
+USER_COUNT=\$(sudo docker exec -u www-data restaurant-pos-backend-prod php artisan tinker --execute="echo \App\Models\User::count();" 2>/dev/null | grep -E '^[0-9]+$' | head -1)
+if [ "\$USER_COUNT" = "0" ] || [ -z "\$USER_COUNT" ]; then
+  echo "🌱 Fresh database detected — running seeders..."
+  sudo docker exec -u www-data restaurant-pos-backend-prod php artisan db:seed --force
+else
+  echo "⏭️  Database already seeded (\$USER_COUNT users) — skipping."
+fi
 REMOTE
 
 echo ""
