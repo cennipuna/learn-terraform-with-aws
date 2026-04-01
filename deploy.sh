@@ -27,19 +27,27 @@ fi
 echo "   App server: $APP_IP"
 echo "   DB server:  $DB_IP"
 
-# Read DB credentials directly from terraform.tfvars (terraform console is
-# unreliable for sensitive variables — returns "(known after apply)" placeholder)
+# Read DB credentials — from terraform.tfvars, TF_VAR_* env vars, or prompt
 tfvars_file="$TERRAFORM_DIR/terraform.tfvars"
-read_tfvar() { grep -E "^\s*$1\s*=" "$tfvars_file" | sed 's/.*=\s*"\(.*\)"/\1/' | tr -d '"' | xargs; }
+read_tfvar() { grep -E "^\s*$1\s*=" "$tfvars_file" 2>/dev/null | sed 's/.*=\s*"\(.*\)"/\1/' | tr -d '"' | xargs; }
 
 DB_NAME=$(read_tfvar db_name)
 DB_USER=$(read_tfvar db_user)
 DB_PASS=$(read_tfvar db_password)
-DB_NAME="${DB_NAME:-restaurant_pos}"
-DB_USER="${DB_USER:-restaurant}"
+
+# Fall back to TF_VAR_* environment variables
+DB_NAME="${DB_NAME:-${TF_VAR_db_name:-restaurant_pos}}"
+DB_USER="${DB_USER:-${TF_VAR_db_user:-restaurant}}"
+DB_PASS="${DB_PASS:-${TF_VAR_db_password:-}}"
+
+# Last resort — prompt
+if [ -z "$DB_PASS" ]; then
+  read -rsp "🔑 Enter db_password (from terraform.tfvars): " DB_PASS
+  echo
+fi
 
 if [ -z "$DB_PASS" ]; then
-  echo "❌ Could not read db_password from $tfvars_file"
+  echo "❌ db_password is required. Add it to terraform.tfvars or set TF_VAR_db_password."
   exit 1
 fi
 
