@@ -27,12 +27,21 @@ fi
 echo "   App server: $APP_IP"
 echo "   DB server:  $DB_IP"
 
-# Read DB credentials from Terraform (handles both tfvars and interactive input)
-DB_NAME=$(echo 'var.db_name'     | terraform console 2>/dev/null | tr -d '"')
-DB_USER=$(echo 'var.db_user'     | terraform console 2>/dev/null | tr -d '"')
-DB_PASS=$(echo 'var.db_password' | terraform console 2>/dev/null | tr -d '"')
+# Read DB credentials directly from terraform.tfvars (terraform console is
+# unreliable for sensitive variables — returns "(known after apply)" placeholder)
+tfvars_file="$TERRAFORM_DIR/terraform.tfvars"
+read_tfvar() { grep -E "^\s*$1\s*=" "$tfvars_file" | sed 's/.*=\s*"\(.*\)"/\1/' | tr -d '"' | xargs; }
+
+DB_NAME=$(read_tfvar db_name)
+DB_USER=$(read_tfvar db_user)
+DB_PASS=$(read_tfvar db_password)
 DB_NAME="${DB_NAME:-restaurant_pos}"
 DB_USER="${DB_USER:-restaurant}"
+
+if [ -z "$DB_PASS" ]; then
+  echo "❌ Could not read db_password from $tfvars_file"
+  exit 1
+fi
 
 # ── Wait for SSH ──────────────────────────────────────────────────────────────
 echo "⏳ Waiting for SSH to be ready..."
