@@ -19,6 +19,7 @@ echo "🔍 Reading Terraform outputs..."
 cd "$TERRAFORM_DIR"
 APP_IP=$(terraform output -raw app_public_ip 2>/dev/null)
 DB_IP=$(terraform output -raw db_private_ip 2>/dev/null)
+DB_PUBLIC_IP=$(terraform output -raw db_public_ip 2>/dev/null)
 
 if [ -z "$APP_IP" ]; then
   echo "❌ Could not get app_public_ip. Has ./up.sh been run?"
@@ -62,6 +63,18 @@ for i in $(seq 1 30); do
   echo "   Not ready yet, retrying in 10s... ($i/30)"
   sleep 10
 done
+
+# ── Sync MySQL credentials on DB server ──────────────────────────────────────
+# user_data (mysql-setup.sh) can silently fail to update the password when
+# MySQL starts from a reused EBS volume. Force-sync it here every deploy.
+echo "🔐 Syncing MySQL credentials on DB server..."
+$SSH ubuntu@"$DB_PUBLIC_IP" "sudo mysql -e \
+  \"CREATE USER IF NOT EXISTS '${DB_USER}'@'%' IDENTIFIED BY '${DB_PASS}'; \
+    ALTER USER '${DB_USER}'@'%' IDENTIFIED BY '${DB_PASS}'; \
+    CREATE DATABASE IF NOT EXISTS \\\`${DB_NAME}\\\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; \
+    GRANT ALL PRIVILEGES ON \\\`${DB_NAME}\\\`.* TO '${DB_USER}'@'%'; \
+    FLUSH PRIVILEGES;\""
+echo "   MySQL credentials synced."
 
 # ── Install Docker + AWS CLI if not already present ──────────────────────────
 echo "🐳 Ensuring Docker and AWS CLI are installed..."
