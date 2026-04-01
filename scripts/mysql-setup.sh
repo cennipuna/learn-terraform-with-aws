@@ -60,7 +60,10 @@ CREATE DATABASE IF NOT EXISTS ${db_name}
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
+-- CREATE ... IF NOT EXISTS won't update the password on an existing EBS volume.
+-- ALTER USER ensures the password always matches terraform.tfvars on every boot.
 CREATE USER IF NOT EXISTS '${db_user}'@'%' IDENTIFIED BY '${db_password}';
+ALTER USER '${db_user}'@'%' IDENTIFIED BY '${db_password}';
 GRANT ALL PRIVILEGES ON ${db_name}.* TO '${db_user}'@'%';
 FLUSH PRIVILEGES;
 SQL
