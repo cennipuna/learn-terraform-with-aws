@@ -64,6 +64,18 @@ for i in $(seq 1 30); do
   sleep 10
 done
 
+# ── Wait for MySQL to be ready on DB server ───────────────────────────────────
+echo "⏳ Waiting for MySQL to be ready on DB server..."
+for i in $(seq 1 30); do
+  if $SSH ubuntu@"$DB_PUBLIC_IP" "sudo mysql -e 'SELECT 1;'" &>/dev/null; then
+    echo "   MySQL is ready."
+    break
+  fi
+  [ "$i" -eq 30 ] && echo "❌ MySQL not ready after 5 minutes." && exit 1
+  echo "   Not ready yet, retrying in 10s... ($i/30)"
+  sleep 10
+done
+
 # ── Sync MySQL credentials on DB server ──────────────────────────────────────
 # user_data (mysql-setup.sh) can silently fail to update the password when
 # MySQL starts from a reused EBS volume. Force-sync it here every deploy.
@@ -75,6 +87,20 @@ $SSH ubuntu@"$DB_PUBLIC_IP" "sudo mysql -e \
     GRANT ALL PRIVILEGES ON \\\`${DB_NAME}\\\`.* TO '${DB_USER}'@'%'; \
     FLUSH PRIVILEGES;\""
 echo "   MySQL credentials synced."
+
+# ── Wait for user_data apt lock to be released ────────────────────────────────
+echo "⏳ Waiting for cloud-init/user_data to finish (apt lock)..."
+$SSH ubuntu@"$APP_IP" 'bash -s' <<'REMOTE'
+# Wait up to 3 minutes for any apt process to finish
+for i in $(seq 1 36); do
+  if ! sudo lsof /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend /var/cache/apt/archives/lock 2>/dev/null | grep -q .; then
+    break
+  fi
+  echo "   apt locked — waiting 5s... ($i/36)"
+  sleep 5
+done
+REMOTE
+echo "   apt is free."
 
 # ── Install Docker + AWS CLI if not already present ──────────────────────────
 echo "🐳 Ensuring Docker and AWS CLI are installed..."
@@ -113,7 +139,9 @@ $SSH ubuntu@"$APP_IP" "sudo mkdir -p /opt/restaurant && sudo chown ubuntu:ubuntu
 $SSH ubuntu@"$APP_IP" "cat > /opt/restaurant/.env" <<ENV
 AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID
 AWS_REGION=$AWS_REGION
+AWS_DEFAULT_REGION=$AWS_REGION
 APP_URL=http://$APP_IP
+FRONTEND_URL=http://$APP_IP
 APP_KEY=$APP_KEY
 DB_HOST=$DB_IP
 DB_PORT=3306
@@ -123,6 +151,9 @@ DB_PASSWORD=$DB_PASS
 REVERB_APP_ID=restaurant-pos
 REVERB_APP_KEY=restaurant-pos-key
 REVERB_APP_SECRET=restaurant-pos-secret
+MEDIA_DISK=s3
+AWS_BUCKET=restaurant-media-$AWS_ACCOUNT_ID
+AWS_URL=https://restaurant-media-$AWS_ACCOUNT_ID.s3.$AWS_REGION.amazonaws.com
 ENV
 
 # ── Copy docker-compose.prod.yml ──────────────────────────────────────────────
@@ -164,11 +195,11 @@ sudo docker exec -u www-data restaurant-pos-backend-prod php artisan filament:as
 
 # Only seed on a fresh database (no users yet)
 USER_COUNT=\$(sudo docker exec -u www-data restaurant-pos-backend-prod php artisan tinker --execute="echo \App\Models\User::count();" 2>/dev/null | grep -E '^[0-9]+$' | head -1)
-if [ "\$USER_COUNT" = "0" ] || [ -z "\$USER_COUNT" ]; then
+if [ "\$USER_COUNT" = "0" ]; then
   echo "🌱 Fresh database detected — running seeders..."
   sudo docker exec -u www-data restaurant-pos-backend-prod php artisan db:seed --force
 else
-  echo "⏭️  Database already seeded (\$USER_COUNT users) — skipping."
+  echo "⏭️  Database already has data (\${USER_COUNT:-unknown} users) — skipping seeders."
 fi
 REMOTE
 

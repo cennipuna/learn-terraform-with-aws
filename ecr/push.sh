@@ -30,7 +30,7 @@ aws ecr get-login-password --region "$AWS_REGION" | \
 # ── Backend ───────────────────────────────────────────────────────────────────
 echo ""
 echo "==> Building backend image (tag: $TAG)..."
-docker build -t "restaurant-backend:$TAG" "$APP_DIR/backend"
+docker buildx build --platform linux/amd64 -t "restaurant-backend:$TAG" -f "$APP_DIR/docker/backend/Dockerfile.prod" "$APP_DIR/backend" --load
 docker tag "restaurant-backend:$TAG" "$BACKEND_URL:$TAG"
 docker push "$BACKEND_URL:$TAG"
 
@@ -43,7 +43,7 @@ fi
 # ── Frontend ──────────────────────────────────────────────────────────────────
 echo ""
 echo "==> Building frontend image (tag: $TAG)..."
-docker build -t "restaurant-frontend:$TAG" "$APP_DIR/frontend"
+docker buildx build --platform linux/amd64 -t "restaurant-frontend:$TAG" -f "$APP_DIR/docker/frontend/Dockerfile.prod" "$APP_DIR" --load
 docker tag "restaurant-frontend:$TAG" "$FRONTEND_URL:$TAG"
 docker push "$FRONTEND_URL:$TAG"
 
@@ -55,7 +55,7 @@ fi
 # ── Nginx ─────────────────────────────────────────────────────────────────────
 echo ""
 echo "==> Building nginx image (tag: $TAG)..."
-docker build -t "restaurant-nginx:$TAG" "$APP_DIR/docker/nginx" -f "$APP_DIR/docker/nginx/Dockerfile.prod"
+docker buildx build --platform linux/amd64 -t "restaurant-nginx:$TAG" "$APP_DIR/docker/nginx" -f "$APP_DIR/docker/nginx/Dockerfile.prod" --load
 docker tag "restaurant-nginx:$TAG" "$NGINX_URL:$TAG"
 docker push "$NGINX_URL:$TAG"
 

@@ -53,6 +53,14 @@ resource "aws_instance" "app" {
     db_password = var.db_password
   })
 
+  # Increase IMDS hop limit to 2 so Docker bridge containers can reach
+  # the instance metadata service for IAM role credentials (S3, ECR, etc.)
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_put_response_hop_limit = 2
+    http_tokens                 = "required"
+  }
+
   root_block_device {
     volume_size = 30
     volume_type = "gp3"

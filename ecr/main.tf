@@ -121,6 +121,32 @@ resource "aws_iam_role_policy_attachment" "ecr_read" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
+# Allow the EC2 app server to read/write the S3 media bucket.
+# The bucket name pattern is "restaurant-media-<account-id>" (set in storage/).
+# Using an IAM role means no static AWS keys are needed in the app .env.
+resource "aws_iam_role_policy" "ec2_s3_media" {
+  name = "restaurant-s3-media-access"
+  role = aws_iam_role.ec2_ecr.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket",
+        "s3:PutObjectAcl"
+      ]
+      Resource = [
+        "arn:aws:s3:::restaurant-media-*",
+        "arn:aws:s3:::restaurant-media-*/*"
+      ]
+    }]
+  })
+}
+
 resource "aws_iam_instance_profile" "ec2_ecr" {
   name = "restaurant-ec2-ecr-pull"
   role = aws_iam_role.ec2_ecr.name
